@@ -1,0 +1,133 @@
+seed: 42
+bank_name: "Tsehay Demo Bank"      # fictional — verify before recording
+months: 12
+start_date: "2025-10-01"
+
+rows:
+  customers: 20000
+  remittances: 120000
+  wallet_txns: 60000
+  fx_conversions: 4000
+  alerts: 6000
+  us_outbound: 10000
+
+sender_countries:                  # weights for normal family remittances
+  US: 0.30
+  SA: 0.25                         # Saudi Arabia
+  AE: 0.15                         # UAE
+  GB: 0.10
+  CA: 0.08
+  other: 0.12
+
+normal:
+  senders_per_receiver: [1, 3]
+  amount_usd: [100, 600]
+  cashout_days: [3, 30]
+
+reporting_threshold_usd: 10000     # placeholder; keep configurable
+fx_official_rate: 155              # ETB per USD, illustrative only
+legacy_alert_false_positive_share: 0.90
+
+planted:
+  structuring: 60                  # customers
+  collector: 25
+  pass_through: 80
+  mule_rings: 10                   # rings of 5–8 customers
+  fx_out_of_profile: 40
+  duplicate_profile_pairs: 120
+
+# ---------------------------------------------------------------------------
+# Generator parameters beyond the core settings above. Every parameter lives
+# here so nothing is hardcoded in src/.
+# ---------------------------------------------------------------------------
+
+# Countries behind the "other" sender weight (drawn uniformly).
+other_sender_countries: [DE, SE, NO, IT, IL, ZA, KE, AU, NL, KW]
+
+# Fictional money-transfer operators. Do not replace with real company names.
+mtos: ["Abay Transfer", "Lucy Remit", "Entoto Express", "Rift Money", "Blue Nile Pay"]
+
+# Share of customers who receive diaspora remittances.
+diaspora_share: 0.70
+
+# Occupations, their population weight, and income band. Income band is a
+# legitimate profile attribute (used by profile_mismatch / fx_out_of_profile);
+# it is never derived from name, region, religion, or nationality.
+occupations:
+  farmer:            {weight: 0.18, band: low}
+  student:           {weight: 0.10, band: low}
+  homemaker:         {weight: 0.10, band: low}
+  daily_laborer:     {weight: 0.08, band: low}
+  small_trader:      {weight: 0.14, band: medium}
+  driver:            {weight: 0.07, band: medium}
+  teacher:           {weight: 0.08, band: medium}
+  civil_servant:     {weight: 0.09, band: medium}
+  nurse:             {weight: 0.04, band: medium}
+  business_owner:    {weight: 0.06, band: high}
+  engineer:          {weight: 0.03, band: high}
+  physician:         {weight: 0.01, band: high}
+  retired:           {weight: 0.02, band: low}
+
+# Expected monthly inflow per income band (USD) — denominator of profile_mismatch.
+expected_monthly_inflow_usd:
+  low: 300
+  medium: 800
+  high: 2500
+
+# Holiday dates inside the window. Remittance volume rises in the days before
+# each one; this is normal seasonality, never a risk signal.
+holidays:
+  - "2025-12-25"
+  - "2026-01-07"   # Genna
+  - "2026-01-19"   # Timket
+  - "2026-03-20"   # Eid al-Fitr
+  - "2026-04-12"   # Fasika
+  - "2026-05-27"   # Eid al-Adha
+  - "2026-09-11"   # Enkutatash
+  - "2026-09-27"   # Meskel
+holiday_lead_days: 14
+holiday_volume_multiplier: 2.5
+
+fx:
+  daily_vol: 0.004                 # std-dev of normal daily log moves
+  daily_drift: 0.0003
+  jump_days: 12                    # planted days with a >2% rate move
+  jump_size: [0.025, 0.05]
+  rate_move_pct: 0.02              # what counts as a "rate move"
+  window_hours: 24
+  normal_usd: [50, 1500]
+  planted_usd: [3000, 15000]
+  planted_per_customer: [2, 4]
+
+typology_params:
+  structuring:
+    band: [0.90, 0.99]             # share of reporting_threshold_usd
+    active_months: [2, 4]
+    payouts_per_month: [3, 5]
+  collector:
+    active_months: [1, 3]
+    senders_per_month: [40, 70]
+    amount_usd: [150, 900]
+  pass_through:
+    inflows: [4, 10]
+    amount_usd: [800, 3000]
+    moved_share: [0.80, 0.98]
+    max_hours: 6
+  mule_ring:
+    size: [5, 8]
+    txns_per_ring: [60, 150]
+    amount_etb: [20000, 150000]
+
+alerts:
+  statuses: {open: 0.7, in_review: 0.3}
+  legacy_score_legit: [62, 12]     # mean, sd — deliberately overlapping
+  legacy_score_suspicious: [66, 12]
+
+us_outbound:
+  bank_name: "Hudson Demo Bank"    # fictional US bank for the re-point demo
+  senders: 3000
+  beneficiary_countries: {ET: 0.35, KE: 0.20, SO: 0.15, UG: 0.10, TZ: 0.08, ER: 0.05, SS: 0.04, DJ: 0.03}
+  amount_usd: [100, 1500]
+  planted:
+    structuring: 15                # senders
+    collector: 8                   # beneficiaries
