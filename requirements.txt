@@ -1,0 +1,9 @@
+# Runtime
+numpy==2.4.6
+pandas==3.0.6
+PyYAML==6.0.3
+scikit-learn==1.9.1
+
+# Dev
+black==26.10.1
+pytest==9.1.1
