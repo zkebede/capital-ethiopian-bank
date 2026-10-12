@@ -31,10 +31,15 @@ jobs:
       - name: Validate (includes reproducibility check)
         run: python -m src.validate
 
-      - name: Upload data summary
+      - name: S1 foundation (cleaning, entity resolution, customer_activity)
+        run: python -m src.foundation
+
+      - name: Upload data summaries
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: data-summary
-          path: data/raw/_summary.md
+          path: |
+            data/raw/_summary.md
+            data/derived/_s1_expected.md
           if-no-files-found: ignore

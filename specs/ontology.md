@@ -11,8 +11,10 @@ lives only in the separate `eval` dataset (`data/raw/eval/ground_truth.csv`).
 ## Object types
 
 ### Customer
-Backing dataset: `customers_clean` (after entity resolution → `customer_xref`).
-Primary key: `customer_id`. Title: `full_name`.
+Backing dataset: `customers_clean` joined to `customer_xref` on `customer_id`
+(S1; see `docs/foundry_s1_guide.md`). Primary key: `customer_id`. Title: `full_name`.
+Duplicate profiles stay as separate Customer objects that share a
+`resolved_entity_id`; features in S2 aggregate by entity, from `customer_activity`.
 
 | Property | Type | Notes |
 |---|---|---|
@@ -29,7 +31,8 @@ Primary key: `customer_id`. Title: `full_name`.
 | income_band | String | Derived from occupation (config) |
 | onboard_date | Date | |
 | diaspora_flag | Boolean | |
-| resolved_entity_id | String | From `customer_xref`; duplicates share one |
+| resolved_entity_id | String | From `customer_xref`; duplicates share one (rule: phone + dob + given name) |
+| cluster_size | Integer | From `customer_xref`; > 1 means a duplicate profile exists |
 | risk_score | Integer | From the feature pipeline |
 | risk_tier | String | Low / Medium / High |
 | sender_fanin, cashout_hours_p50, near_threshold_ct, shared_id_links, fx_rate_timing, profile_mismatch | Double | Feature values (see `features.md`) |
