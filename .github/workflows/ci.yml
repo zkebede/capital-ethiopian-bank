@@ -34,6 +34,9 @@ jobs:
       - name: S1 foundation (cleaning, entity resolution, customer_activity)
         run: python -m src.foundation
 
+      - name: S2 features (links, alert features, risk tiers)
+        run: python -m src.features
+
       - name: Upload data summaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -42,4 +45,5 @@ jobs:
           path: |
             data/raw/_summary.md
             data/derived/_s1_expected.md
+            data/derived/_s2_expected.md
           if-no-files-found: ignore

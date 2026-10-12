@@ -131,3 +131,23 @@ us_outbound:
   planted:
     structuring: 15                # senders
     collector: 8                   # beneficiaries
+
+# ---------------------------------------------------------------------------
+# S2 risk features (see specs/features.md). Starting values are the original
+# spec; record every change in the features.md tuning log.
+# ---------------------------------------------------------------------------
+features:
+  window_days: 30                  # rolling window ending at the alert
+  cashout_max_hours: 720           # inflows with no outflow within this are ignored
+  cashout_fast_hours: 6            # "fast" cash-out for cashout_fast_share
+  near_threshold_band: [0.90, 1.00]
+  rules:                           # flag when value meets the threshold
+    sender_fanin:       {op: ">=", threshold: 10,  points: 25}
+    cashout_fast_share: {op: ">=", threshold: 0.5, points: 30}   # tuned: replaced cashout_hours_p50 (20 pts)
+    near_threshold_ct:  {op: ">=", threshold: 3,   points: 20}
+    shared_id_links:    {op: ">=", threshold: 2,   points: 30}   # tuned: 15 → 30
+    fx_rate_timing:     {op: ">=", threshold: 0.5, points: 20}   # tuned: 10 → 20
+    profile_mismatch:   {op: ">=", threshold: 5,   points: 10}
+  tiers:                           # lower bound of each tier
+    Medium: 30
+    High: 60

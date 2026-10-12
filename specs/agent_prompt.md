@@ -13,7 +13,7 @@ derived from them instead (e.g. distinct senders).
 |---|---|
 | alert: rule, legacy_score, created | Alert |
 | occupation, income_band, expected_monthly_inflow_usd, id_verified, onboard_date | Customer |
-| sender_fanin, cashout_hours_p50, near_threshold_ct, shared_id_links, fx_rate_timing, profile_mismatch, risk_score, risk_tier | Feature pipeline |
+| sender_fanin, cashout_fast_share, near_threshold_ct, shared_id_links, fx_rate_timing, profile_mismatch, risk_score, risk_tier, flags, plus context cashout_hours_p50 and inflow_usd_30d | Alert (`alert_features`) |
 | last 30 days: inflow count, inflow total USD, payouts within 10% below threshold, wallet outflow total ETB and median hours after inflow, FX conversions and rate-move timing | Linked objects |
 | linked customers: count and what is shared (phone/address/device), wallet transfers among them | Customer ↔ Customer |
 | is_holiday_period | Calendar |
@@ -47,7 +47,7 @@ Rules:
 Typology definitions:
 - structuring: 3+ payouts in a month at 90–99% of the reporting threshold.
 - collector: one receiver with many (≥10) unrelated senders in 30 days.
-- pass_through: most of each inflow (≥80%) leaves via wallet within hours (≤6).
+- pass_through: most inflow value (≥50% of USD, typically 80%+) leaves via wallet within 6 hours.
 - mule_ring: several customers sharing a phone/address/device and moving
   funds among themselves.
 - fx_out_of_profile: large FX conversions timed right after big rate moves,

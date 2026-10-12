@@ -16,7 +16,7 @@ pre-upload validation, version-controlled specs, and agent evaluation.
 
 ```bash
 make setup      # python3.11 venv + requirements
-make all        # generate → validate → S1 foundation → test
+make all        # generate → validate → S1 foundation → S2 features → test
 ```
 
 Or step by step:
@@ -25,7 +25,8 @@ Or step by step:
 python -m src.generate     # data/raw/*.csv in ~3s
 python -m src.validate     # every check must print PASS; writes data/raw/_summary.md
 python -m src.foundation   # S1 reference: clean → customer_xref → customer_activity
-pytest                     # unit tests (one per typology, plus S1)
+python -m src.features     # S2 reference: customer_links → alert_features → risk tiers
+pytest                     # unit tests (typologies, S1, S2)
 ```
 
 ## Pipeline
@@ -37,6 +38,7 @@ config.yaml ──► src.generate ──► data/raw/*.csv            (full, wi
             ──► src.validate ──► PASS/FAIL + data/raw/_summary.md (row counts, planted counts, demo pair)
             ──► src.foundation ──► data/derived/ (*_clean, customer_xref, fx_daily_rate, customer_activity)
                                    + _s1_expected.md (numbers the Foundry build must match)
+            ──► src.features ──► data/derived/ (customer_links, alert_features) + _s2_expected.md
 
 Foundry: features → risk tier → AIP Logic agent → analyst Actions
             ──► export data/exports/agent_results.csv
@@ -44,16 +46,18 @@ Foundry: features → risk tier → AIP Logic agent → analyst Actions
 ```
 
 CI (`.github/workflows/ci.yml`) runs formatting, tests, generation,
-validation (including the same-seed hash check), and the S1 reference build on
-every push.
+validation (including the same-seed hash check), and the S1 and S2 reference
+builds on every push.
 
-## Sprint 1 in Foundry
+## Building it in Foundry
 
-[`docs/foundry_s1_guide.md`](docs/foundry_s1_guide.md) walks through upload,
-cleaning, entity resolution, and `customer_activity` in Pipeline Builder. The
-local reference build (`python -m src.foundation`) is the spec: it finds all
-120 planted duplicate profiles with no false merges, and writes the row counts
-and totals your Foundry datasets should match.
+Each sprint has a step-by-step guide. The local reference build is the spec, and
+writes the numbers your Foundry datasets should match.
+
+| Sprint | Guide | Reference | Result (synthetic data) |
+|---|---|---|---|
+| S1 data foundation | [`docs/foundry_s1_guide.md`](docs/foundry_s1_guide.md) | `src.foundation` | 120/120 duplicate profiles resolved, 0 false merges |
+| S2 features + Ontology | [`docs/foundry_s2_guide.md`](docs/foundry_s2_guide.md) | `src.features` | 99.3% of planted alerts reach the agent; 99.9% of legitimate alerts stay Low |
 
 ## Data
 
@@ -93,6 +97,7 @@ src/foundation.py      S1 reference build (entry point)
 src/clean.py           S1 cleaning + Foundry column types
 src/entity_resolution.py   S1 customer_xref
 src/customer_activity.py   S1 fx_daily_rate + customer_activity
+src/features.py        S2 customer_links, alert features, risk score + tier
 docs/                  Foundry how-to guides
 specs/                 features.md · ontology.md · agent_prompt.md
 tests/                 pytest suite

@@ -33,9 +33,10 @@ Duplicate profiles stay as separate Customer objects that share a
 | diaspora_flag | Boolean | |
 | resolved_entity_id | String | From `customer_xref`; duplicates share one (rule: phone + dob + given name) |
 | cluster_size | Integer | From `customer_xref`; > 1 means a duplicate profile exists |
-| risk_score | Integer | From the feature pipeline |
-| risk_tier | String | Low / Medium / High |
-| sender_fanin, cashout_hours_p50, near_threshold_ct, shared_id_links, fx_rate_timing, profile_mismatch | Double | Feature values (see `features.md`) |
+| shared_id_links | Integer | Other entities sharing a phone/address (from `customer_links`) |
+
+Risk features and tiers live on **Alert**, because they are computed over the
+30 days before each alert (see `features.md`).
 
 ### Remittance
 Primary key: `txn_id`. Properties: receiver_id, sender_name, sender_country,
@@ -52,10 +53,24 @@ Primary key: `txn_id`. Properties: customer_id, usd_in, etb_out, rate,
 timestamp, `within_rate_move_window` (Boolean, derived).
 
 ### Alert
-Primary key: `alert_id`. Properties: customer_id, rule, legacy_score, created,
-status, plus agent output written back by AIP Logic: `agent_classification`,
-`agent_typology`, `agent_confidence`, `agent_evidence` (String array),
-`agent_recommended_action`, `agent_case_note`.
+Backing dataset: `alerts_clean` joined to `alert_features` on `alert_id`.
+Primary key: `alert_id`. Title: `alert_id`.
+
+| Property | Type | Notes |
+|---|---|---|
+| customer_id, rule, status | String | From `alerts_clean` |
+| legacy_score | Integer | Shown for contrast only |
+| created | Timestamp | |
+| resolved_entity_id | String | |
+| sender_fanin, near_threshold_ct, shared_id_links | Integer | Features |
+| cashout_fast_share, fx_rate_timing, profile_mismatch | Double | Features (`fx_rate_timing` may be null) |
+| cashout_hours_p50, inflow_usd_30d | Double | Context for the agent, not scored |
+| pts_<feature> (×6), risk_score | Integer | Points per feature and total |
+| risk_tier | String | Low / Medium / High |
+| flags | String | `;`-separated flagged features |
+| agent_classification, agent_typology, agent_recommended_action, agent_case_note | String | Written back by AIP Logic (S3) |
+| agent_confidence | Double | Written back by AIP Logic (S3) |
+| agent_evidence | String array | Written back by AIP Logic (S3) |
 
 ### Case
 Created by an Action. Primary key: `case_id`. Properties: alert_id, customer_id,
@@ -72,7 +87,7 @@ agent_overridden (Boolean).
 | Customer → FX Conversion | 1 : many | customer_id |
 | Customer → Alert | 1 : many | customer_id |
 | Alert → Case | 1 : many | alert_id |
-| Customer ↔ Customer (shares identifier) | many : many | `customer_links` dataset: (customer_a, customer_b, shared_on ∈ phone/address/device) |
+| Customer ↔ Customer (shares identifier) | many : many | `customer_links` dataset: (customer_a, customer_b, shared_on ∈ phone / address / address+phone, same_entity) |
 
 ## Actions
 
