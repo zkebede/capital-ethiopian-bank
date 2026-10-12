@@ -14,6 +14,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CONFIG = ROOT / "config.yaml"
 RAW_DIR = ROOT / "data" / "raw"
 EXPORTS_DIR = ROOT / "data" / "exports"
+DERIVED_DIR = ROOT / "data" / "derived"
 
 NONE = "none"
 LAUNDERING_TYPOLOGIES = (

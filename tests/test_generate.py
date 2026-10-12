@@ -5,7 +5,6 @@ Uses a scaled-down copy of config.yaml so the suite runs in seconds.
 
 from __future__ import annotations
 
-import copy
 from pathlib import Path
 
 import numpy as np
@@ -14,40 +13,10 @@ import pytest
 import yaml
 
 from src import evaluate, generate, typologies, validate
-from src.common import LAUNDERING_TYPOLOGIES, NONE, load_config, rng_for
+from src.common import LAUNDERING_TYPOLOGIES, NONE, rng_for
 from src.gen_customers import generate as gen_customers
 from src.gen_customers import occupation_bands
 from src.gen_fx import daily_rates, rate_move_days
-
-
-@pytest.fixture(scope="module")
-def cfg() -> dict:
-    """Small config: same parameters, fewer rows and planted cases."""
-    c = copy.deepcopy(load_config())
-    c["rows"] = {
-        "customers": 3000,
-        "remittances": 20000,
-        "wallet_txns": 10000,
-        "fx_conversions": 1000,
-        "alerts": 1000,
-        "us_outbound": 2000,
-    }
-    c["planted"] = {
-        "structuring": 10,
-        "collector": 5,
-        "pass_through": 10,
-        "mule_rings": 3,
-        "fx_out_of_profile": 8,
-        "duplicate_profile_pairs": 10,
-    }
-    c["us_outbound"]["senders"] = 600
-    c["us_outbound"]["planted"] = {"structuring": 3, "collector": 2}
-    return c
-
-
-@pytest.fixture(scope="module")
-def tables(cfg: dict) -> dict[str, pd.DataFrame]:
-    return generate.build(cfg)
 
 
 @pytest.fixture(scope="module")
