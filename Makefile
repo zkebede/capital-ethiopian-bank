@@ -1,11 +1,11 @@
-# Local pipeline: make all  →  generate, validate, S1 foundation, test.
+# Local pipeline: make all  →  generate, validate, S1 foundation, S2 features, test.
 # After exporting agent results from Foundry to data/exports/agent_results.csv: make evaluate
 
 PY ?= .venv/bin/python
 
-.PHONY: all setup generate validate foundation test evaluate format lint clean
+.PHONY: all setup generate validate foundation features test evaluate format lint clean
 
-all: generate validate foundation test
+all: generate validate foundation features test
 
 setup:
 	python3.11 -m venv .venv
@@ -20,6 +20,9 @@ validate:
 
 foundation:
 	$(PY) -m src.foundation
+
+features:
+	$(PY) -m src.features
 
 test:
 	$(PY) -m pytest

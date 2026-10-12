@@ -1,64 +1,68 @@
 # Risk features
 
-Per customer, rolling 30 days, computed in a Foundry pipeline from the cleaned
-datasets. Keep this file in sync with what is built. Record tuned thresholds in
-the **Final** column.
+Computed **per alert**, over the 30 days ending at the alert's `created` time,
+aggregated by `resolved_entity_id` (duplicate profiles roll up to one person).
+Reference implementation: `src/features.py`. Thresholds and points live in
+`config.yaml → features`; this file records what they mean and why they changed.
 
 > **Fairness rule:** no feature may use nationality, ethnicity, religion,
 > region, branch, sender/beneficiary country, or any part of a name. Features
 > describe *behaviour* only.
 
-## Features
+## Features (final, tuned)
 
-| Feature | Definition | Source | Flag | Points | Final |
-|---|---|---|---|---:|---|
-| `sender_fanin` | Distinct `sender_name` values paying this receiver | remittances | ≥ 10 | 25 | |
-| `cashout_hours_p50` | Median hours from each inflow (`payout_date`) to the customer's next outbound wallet txn | remittances + wallet_txns | ≤ 6 | 20 | |
-| `near_threshold_ct` | Payouts with `amount_usd` in [0.90, 1.00) × `reporting_threshold_usd` | remittances | ≥ 3 | 20 | |
-| `shared_id_links` | Other customers sharing phone, address, or device (from `customer_links`) | customers | ≥ 2 | 15 | |
-| `fx_rate_timing` | Share of the customer's FX conversions made within 24h after a day whose rate moved > 2% vs the previous day | fx_conversions | ≥ 50% | 10 | |
-| `profile_mismatch` | 30-day inflow USD ÷ expected monthly inflow for the occupation's income band | remittances + fx_conversions + customers | ≥ 5× | 10 | |
+| Feature | Definition | Source | Flag | Points |
+|---|---|---|---|---:|
+| `sender_fanin` | Distinct `sender_name` values on remittances to this entity | customer_activity | ≥ 10 | 25 |
+| `cashout_fast_share` | Share of remittance **USD** followed by the entity's next wallet outflow within 6h (outflow must precede the alert) | customer_activity | ≥ 0.5 | 30 |
+| `near_threshold_ct` | Remittances with `amount_usd` in [0.90, 1.00) × `reporting_threshold_usd` | customer_activity | ≥ 3 | 20 |
+| `shared_id_links` | Other *entities* sharing a phone or address (same-entity duplicates excluded) | customer_links | ≥ 2 | 30 |
+| `fx_rate_timing` | Share of FX conversions made on a day the reference rate moved > 2% vs the previous day (null if no conversions) | customer_activity + fx_daily_rate | ≥ 0.5 | 20 |
+| `profile_mismatch` | (remittance USD + FX `usd_in`) ÷ expected monthly inflow for the customer's income band | customer_activity + customers | ≥ 5× | 10 |
 
-Expected monthly inflow by band (from `config.yaml`): low 300 · medium 800 ·
-high 2,500 USD. Occupation → band mapping also lives in `config.yaml`.
+Unscored context columns kept for the agent: `cashout_hours_p50` (median hours
+inflow → next outflow) and `inflow_usd_30d`.
 
-## Score and tiers
+Expected monthly inflow by band: low 300 · medium 800 · high 2,500 USD
+(`config.yaml → expected_monthly_inflow_usd`).
 
-`risk_score` = sum of points for flagged features (0–100).
+`risk_score` = sum of points of flagged features. Null features never flag.
 
 | Tier | Score | Routing |
 |---|---|---|
-| Low | < 30 | Not sent to the agent; stays in the legacy queue as low priority |
+| Low | < 30 | Not sent to the agent |
 | Medium | 30–59 | Agent drafts a case |
-| High | ≥ 60 | Agent drafts a case; top of the analyst queue |
+| High | ≥ 60 | Agent drafts a case; top of the queue |
 
-## Which planted typology each feature should catch
+## Results (synthetic data, seed 42)
 
-| Typology | Primary features | Expected score |
-|---|---|---|
-| structuring | `near_threshold_ct`, `profile_mismatch` | 30 (Medium) |
-| collector | `sender_fanin`, `profile_mismatch` | 35 (Medium) |
-| pass_through | `cashout_hours_p50`, `profile_mismatch` (low/medium bands only) | 20–30 ⚠️ |
-| mule_ring | `shared_id_links`, plus `profile_mismatch` on large P2P flows | 15–25 ⚠️ |
-| fx_out_of_profile | `fx_rate_timing`, `profile_mismatch` | 20 ⚠️ |
-| duplicate_profile | `shared_id_links` = 1 (below flag) | Low — routed to entity resolution, not AML |
+| Ground truth | Low | Medium | High | Sent to agent |
+|---|---:|---:|---:|---:|
+| none | 5,392 | 8 | 0 | 0.1% |
+| structuring | 0 | 121 | 0 | 100% |
+| collector | 0 | 54 | 0 | 100% |
+| pass_through | 4 | 167 | 0 | 98% |
+| mule_ring | 0 | 166 | 1 | 100% |
+| fx_out_of_profile | 0 | 86 | 1 | 100% |
 
-⚠️ With the starting weights, mule rings, FX timing, and some pass-through customers can land in Low and never
-reach the agent. `evaluate.py` reports these as "never reached the agent".
-Options when tuning: lower `shared_id_links` to ≥ 1 *with* a wallet-cycle check,
-or let any single 20+ point feature force Medium.
+**99.3%** of planted alerts reach the agent (ceiling on recall; target ≥ 90%).
+**99.9%** of legitimate alerts stay Low. Regenerate with `python -m src.features`
+(writes `data/derived/_s2_expected.md`).
 
 ## Known legitimate look-alikes (should stay Low)
 
 - Holiday spikes (Genna, Timket, Fasika, Eid, Enkutatash, Meskel): more and
-  larger family payments in the 14 days before. Do not treat volume alone as risk.
+  larger family payments in the 14 days before. Volume alone is not risk.
 - Families with 3 regular senders (siblings abroad): `sender_fanin` = 3.
 - Normal cash-out 3–30 days after payout.
-- Legitimate large US transfers (house/business) above the threshold, reported
-  with `ctr_flag = True`.
+- Duplicate profiles share a phone, but resolve to one entity, so
+  `shared_id_links` ignores them.
+- Legitimate large US transfers above the threshold, reported with `ctr_flag = True`.
 
 ## Tuning log
 
-| Date | Change | Recall (synthetic) | Legit cleared (synthetic) |
-|---|---|---:|---:|
-| | Initial weights above | | |
+| Date | Change | Why | Planted → agent | Legit kept Low |
+|---|---|---|---:|---:|
+| 2026-10-12 | Original spec weights (`cashout_hours_p50` ≤ 6h = 20, `shared_id_links` = 15, `fx_rate_timing` = 10) | Baseline | 38.8% | 100.0% |
+| 2026-10-12 | `shared_id_links` 15 → 30; `fx_rate_timing` 10 → 20 | Mule rings (15) and FX timing (10 + 10) could never reach Medium alone | 90.3% | 99.8% |
+| 2026-10-12 | Replace `cashout_hours_p50` (≤ 6h, 20) with `cashout_fast_share` (≥ 0.5, 30) | Ordinary family remittances in the same window pushed the median above 6h, hiding a third of pass-through cases; value-weighting is closer to the typology ("80%+ of each inflow out within 6h") | 99.3% | 99.9% |

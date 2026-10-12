@@ -61,6 +61,11 @@ def _suspicious(cfg: dict[str, Any], rng: np.random.Generator, events: pd.DataFr
     else:
         chosen = np.concatenate([customers, rng.choice(customers, size=n - len(customers))])
 
+    # A rule fires once the pattern is visible, so each alert is timed after the
+    # last planted event in the same calendar month as the event it picks.
+    month = events["timestamp"].dt.to_period("M")
+    events = events.assign(pattern_end=events.groupby(["customer_id", month])["timestamp"].transform("max"))
+
     grouped = events.groupby("customer_id", sort=True)
     first = grouped.indices
     picks = np.array([rng.choice(first[c]) for c in chosen])
@@ -68,7 +73,7 @@ def _suspicious(cfg: dict[str, Any], rng: np.random.Generator, events: pd.DataFr
 
     natural = ev["typology"].map(NATURAL_RULE).to_numpy()
     rule = np.where(rng.random(n) < NATURAL_RULE_SHARE, natural, rng.choice(RULES, size=n))
-    created = ev["timestamp"] + pd.to_timedelta(rng.uniform(1, 72, size=n), unit="h")
+    created = ev["pattern_end"] + pd.to_timedelta(rng.uniform(1, 72, size=n), unit="h")
     created = created.where(created < win.end, win.end - pd.Timedelta(minutes=1))
     return pd.DataFrame(
         {

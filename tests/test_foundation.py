@@ -7,23 +7,10 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from src import foundation, generate
-from src.clean import SCHEMA, cast, clean_all, clean_table, normalise_phone, read_raw
+from src import foundation
+from src.clean import SCHEMA, cast, clean_table, normalise_phone, read_raw
 from src.customer_activity import build_activity, fx_daily_rate
 from src.entity_resolution import RULE_MATCHED, build_xref, matched_pairs
-
-
-@pytest.fixture(scope="module")
-def raw_dir(tables: dict, tmp_path_factory: pytest.TempPathFactory) -> Path:
-    out = tmp_path_factory.mktemp("raw")
-    generate.write(tables, out)
-    return out
-
-
-@pytest.fixture(scope="module")
-def cleaned(raw_dir: Path, cfg: dict) -> dict[str, pd.DataFrame]:
-    return clean_all(raw_dir / "upload", cfg)[0]
-
 
 # ---------------------------------------------------------------------------
 # Cleaning

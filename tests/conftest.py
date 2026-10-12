@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import copy
+from pathlib import Path
 
 import pandas as pd
 import pytest
 
 from src import generate
+from src.clean import clean_all
 from src.common import load_config
 
 
@@ -40,3 +42,17 @@ def cfg() -> dict:
 def tables(cfg: dict) -> dict[str, pd.DataFrame]:
     """All generated tables for the small config."""
     return generate.build(cfg)
+
+
+@pytest.fixture(scope="session")
+def raw_dir(tables: dict, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Generated files written to disk (full, upload, eval)."""
+    out = tmp_path_factory.mktemp("raw")
+    generate.write(tables, out)
+    return out
+
+
+@pytest.fixture(scope="session")
+def cleaned(raw_dir: Path, cfg: dict) -> dict[str, pd.DataFrame]:
+    """S1-cleaned tables for the small config."""
+    return clean_all(raw_dir / "upload", cfg)[0]
