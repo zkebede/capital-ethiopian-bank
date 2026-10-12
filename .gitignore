@@ -1,0 +1,9 @@
+.venv/
+data/
+__pycache__/
+*.parquet
+.DS_Store
+.pytest_cache/
+
+# Private working notes — keep local only
+project_instruction.md
