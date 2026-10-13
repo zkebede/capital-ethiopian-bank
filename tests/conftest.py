@@ -33,6 +33,9 @@ def cfg() -> dict:
         "fx_out_of_profile": 8,
         "duplicate_profile_pairs": 10,
     }
+    c["lookalikes"]["community_collection"]["customers"] = 8
+    c["lookalikes"]["steady_trader"]["customers"] = 6
+    c["lookalikes"]["family_shared_phone"]["groups"] = 5
     c["us_outbound"]["senders"] = 600
     c["us_outbound"]["planted"] = {"structuring": 3, "collector": 2}
     return c

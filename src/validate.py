@@ -201,6 +201,42 @@ def check_typology_shapes(t: dict[str, pd.DataFrame], cfg: dict[str, Any]) -> Re
     )
 
 
+def lookalike_counts(t: dict[str, pd.DataFrame]) -> dict[str, int]:
+    """Legitimate look-alikes as they appear in the generated files."""
+    c = t["customers"]
+    fam = c[c["scenario"].eq("family_shared_phone")]
+    return {
+        "community_collection": int(c["scenario"].eq("community_collection").sum()),
+        "steady_trader": int(c["scenario"].eq("steady_trader").sum()),
+        "family_shared_phone_groups": int(fam["phone"].nunique()),
+    }
+
+
+def check_lookalikes(t: dict[str, pd.DataFrame], cfg: dict[str, Any]) -> Result:
+    """Look-alike counts match config, all are labelled legitimate, and each has an alert."""
+    lk = cfg["lookalikes"]
+    expected = {
+        "community_collection": int(lk["community_collection"]["customers"]),
+        "steady_trader": int(lk["steady_trader"]["customers"]),
+        "family_shared_phone_groups": int(lk["family_shared_phone"]["groups"]),
+    }
+    actual = lookalike_counts(t)
+    bad = [f"{k}: {actual[k]} != {v}" for k, v in expected.items() if actual[k] != v]
+    c = t["customers"]
+    flagged = c[c["scenario"].ne(NONE)]
+    if flagged["ground_truth"].ne(NONE).any():
+        bad.append("look-alike customer has a laundering label")
+    a = t["alerts"]
+    lk_alerts = a[a["scenario"].ne(NONE)]
+    if lk_alerts["ground_truth"].ne(NONE).any():
+        bad.append("look-alike alert not labelled none")
+    missing = set(flagged["customer_id"]) - set(lk_alerts["customer_id"])
+    if missing:
+        bad.append(f"{len(missing)} look-alikes without an alert")
+    detail = "; ".join(bad) or ", ".join(f"{k}={v}" for k, v in actual.items())
+    return Result("Legitimate look-alikes planted as configured", not bad, detail)
+
+
 def check_alert_share(t: dict[str, pd.DataFrame], cfg: dict[str, Any]) -> Result:
     """Legitimate share of legacy alerts ≈ configured share (±2%)."""
     share = float(t["alerts"]["ground_truth"].eq(NONE).mean())
@@ -218,14 +254,16 @@ def check_mule_rings(t: dict[str, pd.DataFrame], cfg: dict[str, Any]) -> Result:
 
 
 def check_no_ground_truth_in_upload(raw: Path) -> Result:
-    """Upload copies (for the Ontology) carry no ground_truth column."""
+    """Upload copies (for the Ontology) carry no hidden label columns."""
     leaked = [
-        p.name for p in sorted((raw / "upload").glob("*.csv")) if "ground_truth" in pd.read_csv(p, nrows=0).columns
+        p.name
+        for p in sorted((raw / "upload").glob("*.csv"))
+        if set(generate.HIDDEN_COLS) & set(pd.read_csv(p, nrows=0).columns)
     ]
     count = len(list((raw / "upload").glob("*.csv")))
     ok = not leaked and count == len(generate.FILES)
     return Result(
-        "Upload files exclude ground_truth", ok, f"leaked: {leaked}" if leaked else f"{count} upload files clean"
+        "Upload files exclude hidden labels", ok, f"leaked: {leaked}" if leaked else f"{count} upload files clean"
     )
 
 
@@ -306,6 +344,8 @@ def write_summary(t: dict[str, pd.DataFrame], cfg: dict[str, Any], results: list
 
     lines += ["", "## Planted counts", "", "| Typology | Count |", "|---|---:|"]
     lines += [f"| {k} | {v} |" for k, v in planted_counts(t).items()]
+    lines += ["", "## Legitimate look-alikes (ground truth = none)", "", "| Scenario | Count |", "|---|---:|"]
+    lines += [f"| {k} | {v} |" for k, v in lookalike_counts(t).items()]
 
     alerts = t["alerts"]
     lines += [
@@ -356,6 +396,7 @@ def run(raw: Path, config_path: str, skip_repro: bool = False) -> list[Result]:
         lambda: check_dates(t, cfg, today),
         lambda: check_planted_counts(t, cfg),
         lambda: check_typology_shapes(t, cfg),
+        lambda: check_lookalikes(t, cfg),
         lambda: check_alert_share(t, cfg),
         lambda: check_mule_rings(t, cfg),
         lambda: check_no_ground_truth_in_upload(raw),

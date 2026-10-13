@@ -151,7 +151,14 @@ def test_planted_alerts_reach_the_agent(scored: pd.DataFrame, tables: dict) -> N
     planted = reach.drop(index="none")
     share = (planted["Medium"].sum() + planted["High"].sum()) / planted[["Low", "Medium", "High"]].sum().sum()
     assert share >= 0.90, reach
-    assert reach.loc["none", "Low"] / reach.loc["none", ["Low", "Medium", "High"]].sum() >= 0.95
+
+    # Ordinary legitimate alerts stay Low; look-alikes are meant to reach the agent.
+    alerts = tables["alerts"].set_index("alert_id")
+    tier = scored.set_index("alert_id")["risk_tier"]
+    ordinary = alerts["ground_truth"].eq("none") & alerts["scenario"].eq("none")
+    lookalike = alerts["scenario"].ne("none")
+    assert tier[ordinary[ordinary].index].eq("Low").mean() >= 0.95
+    assert tier[lookalike[lookalike].index].ne("Low").mean() >= 0.5
 
 
 @pytest.mark.parametrize(

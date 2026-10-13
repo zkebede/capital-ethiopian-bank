@@ -23,7 +23,10 @@ from typing import Any
 import pandas as pd
 
 from src import gen_alerts, gen_customers, gen_fx, gen_remittances, gen_us_outbound, gen_wallets, typologies
-from src.common import DEFAULT_CONFIG, RAW_DIR, fmt_ts, load_config
+from src.common import DEFAULT_CONFIG, NONE, RAW_DIR, fmt_ts, load_config
+
+# Labels that never leave this repo's full files: stripped from upload/, kept in eval/.
+HIDDEN_COLS = ("ground_truth", "scenario")
 
 # file name → (primary key, timestamp columns)
 FILES: dict[str, tuple[str, tuple[str, ...]]] = {
@@ -46,7 +49,7 @@ def build(cfg: dict[str, Any]) -> dict[str, pd.DataFrame]:
     remittances = gen_remittances.generate(cfg, customers, rates, planted.remittances)
     wallets = gen_wallets.generate(cfg, customers, remittances, planted.wallet_txns)
     fx = gen_fx.generate(cfg, customers, rates, planted.fx_conversions)
-    alerts = gen_alerts.generate(cfg, customers, remittances, wallets, fx)
+    alerts = gen_alerts.generate(cfg, customers, remittances, wallets, fx, planted.lookalike_events)
     us = gen_us_outbound.generate(cfg)
     return {
         "customers": customers,
@@ -69,8 +72,12 @@ def write(tables: dict[str, pd.DataFrame], out: Path) -> None:
         for col in ts_cols:
             df[col] = fmt_ts(df[col]).to_numpy()
         df.to_csv(out / f"{name}.csv", index=False, lineterminator="\n")
-        df.drop(columns="ground_truth").to_csv(out / "upload" / f"{name}.csv", index=False, lineterminator="\n")
-        truth.append(pd.DataFrame({"file": name, "key": df[key], "ground_truth": df["ground_truth"]}))
+        hidden = [c for c in HIDDEN_COLS if c in df.columns]
+        df.drop(columns=hidden).to_csv(out / "upload" / f"{name}.csv", index=False, lineterminator="\n")
+        scenario = df["scenario"] if "scenario" in df.columns else NONE
+        truth.append(
+            pd.DataFrame({"file": name, "key": df[key], "ground_truth": df["ground_truth"], "scenario": scenario})
+        )
     pd.concat(truth, ignore_index=True).to_csv(out / "eval" / "ground_truth.csv", index=False, lineterminator="\n")
 
 

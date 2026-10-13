@@ -37,6 +37,9 @@ jobs:
       - name: S2 features (links, alert features, risk tiers)
         run: python -m src.features
 
+      - name: S3 agent harness (offline baseline, no API calls)
+        run: python -m src.agent --backend baseline
+
       - name: Upload data summaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -46,4 +49,5 @@ jobs:
             data/raw/_summary.md
             data/derived/_s1_expected.md
             data/derived/_s2_expected.md
+            data/exports/agent_test_report.md
           if-no-files-found: ignore

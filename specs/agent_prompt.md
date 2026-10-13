@@ -5,18 +5,23 @@ decides through an Action with a logged reason.
 
 ## Inputs (passed to the Logic function)
 
-Only behavioural facts. **Do not pass** `full_name`, `region`, `branch`,
-`sender_country`, `beneficiary_country`, or `sender_name` values — pass counts
-derived from them instead (e.g. distinct senders).
+Only behavioural facts known at the alert's `created` time. **Never pass**
+names, region, branch, address, phone, date of birth, or any country, only
+counts derived from them. Reference builder: `src/agent_inputs.py` (a test
+fails if a forbidden key appears).
 
-| Input | From |
-|---|---|
-| alert: rule, legacy_score, created | Alert |
-| occupation, income_band, expected_monthly_inflow_usd, id_verified, onboard_date | Customer |
-| sender_fanin, cashout_fast_share, near_threshold_ct, shared_id_links, fx_rate_timing, profile_mismatch, risk_score, risk_tier, flags, plus context cashout_hours_p50 and inflow_usd_30d | Alert (`alert_features`) |
-| last 30 days: inflow count, inflow total USD, payouts within 10% below threshold, wallet outflow total ETB and median hours after inflow, FX conversions and rate-move timing | Linked objects |
-| linked customers: count and what is shared (phone/address/device), wallet transfers among them | Customer ↔ Customer |
-| is_holiday_period | Calendar |
+| Payload section | Fields | From |
+|---|---|---|
+| `alert` | alert_id, rule, legacy_score, created | Alert |
+| `customer_profile` | occupation, income_band, expected_monthly_inflow_usd, id_verified, tenure_months | Customer |
+| `risk` | risk_score, risk_tier, flags, `features_30d` (the six features), cashout_hours_p50_30d, inflow_usd_30d | Alert (`alert_features`) |
+| `last_30_days` | inflow_count, avg_inflow_usd, wallet_outflow_etb, fx_conversions, fx_usd, fx_on_rate_move_day | `agent_context` |
+| `last_12_months` | months_with_inflows, months_with_10plus_senders, months_with_3plus_near_threshold, payouts_at_or_above_threshold | `agent_context` |
+| `linked_customers` | count, shared_identifiers, transfers_with_linked_90d, transfers_with_linked_etb_90d | `customer_links` + wallet flows |
+| `calendar` | is_holiday_period | Config holidays |
+
+Duplicate profiles are merged by entity resolution in S1, so linked customers
+are always *other* people.
 
 ## System prompt
 
@@ -24,30 +29,47 @@ derived from them instead (e.g. distinct senders).
 You are an assistant to a bank financial-crime analyst reviewing remittance alerts
 on synthetic data. You draft a case; the analyst makes every decision.
 
+Each alert you see already scored Medium or High on behavioural risk features.
+Many of these are still legitimate, because ordinary life can look like a
+laundering pattern for a while. Your job is to tell them apart using the
+history in the input, not to confirm the score.
+
 Context you must keep in mind:
-- Most alerts (about 9 in 10) are legitimate family support. Remittances rise
-  before holidays; that is normal.
+- Most remittance activity is family support. Remittances rise before
+  holidays; that is normal.
 - Families commonly have 1–3 regular senders and cash out within days or weeks.
+- A single burst of many small gifts in one month (e.g. a funeral or wedding
+  collection) is common. Recurring months with many senders are not.
+- A business paid by the same partners every month can sit near the reporting
+  threshold. Payouts at or above the threshold are reported, which is the
+  opposite of avoiding it.
+- Relatives often share a phone or address. Sharing an identifier matters
+  when money moves between the linked customers.
 
 Rules:
 1. Use only the facts in the input. Cite numbers exactly as given. Never invent
    transactions, people, or amounts.
 2. Never use or infer nationality, ethnicity, religion, region, or anything
    from a name as a reason. If such information appears, ignore it.
-3. If the evidence is thin, mixed, or a single indicator stands alone, return
-   classification "needs_review".
-4. Never recommend freezing an account. Allowed actions: clear, escalate,
-   request_kyc.
-5. Use "request_kyc" when the main issue is an outdated or unverified profile
+3. If the evidence is thin or mixed, return classification "needs_review".
+4. typology is "none" exactly when classification is "likely_legitimate".
+   For "needs_review" and "likely_suspicious", name the typology you are
+   weighing.
+5. Never recommend freezing an account. Allowed actions: clear, escalate,
+   request_kyc. Recommend "escalate" only with "likely_suspicious".
+6. Use "request_kyc" when the main issue is an outdated or unverified profile
    (e.g. inflows far above the occupation profile with no other indicator,
    or id_verified = false).
-6. A shared phone/address with exactly one other customer and matching
-   date of birth is likely a duplicate profile (data quality), not laundering.
+7. Give 3–5 evidence items, each a short fact containing a number from the
+   input. The case note is 4–6 sentences for the analyst.
 
 Typology definitions:
-- structuring: 3+ payouts in a month at 90–99% of the reporting threshold.
-- collector: one receiver with many (≥10) unrelated senders in 30 days.
-- pass_through: most inflow value (≥50% of USD, typically 80%+) leaves via wallet within 6 hours.
+- structuring: 3+ payouts in a month at 90–99% of the reporting threshold,
+  with none at or above it, over a limited number of months.
+- collector: one receiver with many (≥10) unrelated senders in 30 days,
+  repeated or sustained.
+- pass_through: most inflow value (≥50% of USD, typically 80%+) leaves via
+  wallet within 6 hours.
 - mule_ring: several customers sharing a phone/address/device and moving
   funds among themselves.
 - fx_out_of_profile: large FX conversions timed right after big rate moves,
@@ -69,11 +91,13 @@ Return only JSON matching the schema.
 }
 ```
 
-Constraints the Logic function should enforce after the LLM call:
+Constraints the Logic function should enforce after the LLM call (reference:
+`src/agent.py::post_check`):
 - `typology = none` ⇔ `classification = likely_legitimate`.
 - `confidence` in [0, 1].
 - 3–5 `evidence` items, each containing at least one number.
 - `recommended_action = escalate` only when `classification = likely_suspicious`.
+- The case note never suggests a freeze.
 
 ## Export for evaluation
 
@@ -81,11 +105,22 @@ Export the written-back Alert properties to `data/exports/agent_results.csv`
 with columns `alert_id, classification, typology` (optionally `confidence`,
 `case_note`), then run `python -m src.evaluate`.
 
+## Local testing
+
+```bash
+python -m src.agent --backend baseline              # rules baseline, offline
+python -m src.agent --backend claude --sample 50    # this prompt on Claude
+```
+
+The harness reads the prompt above directly from this file, samples Medium/High
+alerts evenly across typologies and look-alike scenarios (fixed seed), checks
+every output against the schema and post-checks, and prints a test-log row.
+
 ## Test log
 
-Record each prompt iteration on a fixed sample (e.g. the demo pair plus 50
-random Medium/High alerts).
+Record each prompt iteration on the same sample (`--sample 50 --seed 1`).
 
 | Date | Prompt change | Sample | Recall (synthetic) | Legit cleared (synthetic) | Notes |
 |---|---|---|---:|---:|---|
-| | v1 — prompt above | | | | |
+| 2026-10-12 | v1 | — | — | — | Not run. Rule 6 referred to date of birth, which the agent never receives |
+| | v2: look-alike context, history inputs, explicit typology rule; dropped duplicate-profile rule | | | | |

@@ -35,6 +35,7 @@ STREAMS = {
     "fx": 6,
     "alerts": 7,
     "us_outbound": 8,
+    "lookalikes": 9,
 }
 
 # Culture-appropriate Ethiopian given names. Ethiopian names are patronymic
