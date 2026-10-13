@@ -10,4 +10,5 @@ target-version = ["py311"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]                  # so bare `pytest` (as in CI) can import src
 addopts = "-q"
