@@ -32,20 +32,61 @@ pytest                     # unit tests (typologies, S1, S2, S3)
 
 ## Pipeline
 
-```
-config.yaml ──► src.generate ──► data/raw/*.csv            (full, with ground_truth)
-                              ├► data/raw/upload/*.csv     (no ground_truth) ──► Foundry raw/ → Ontology
-                              └► data/raw/eval/ground_truth.csv ──────────────► Foundry eval dataset
-            ──► src.validate ──► PASS/FAIL + data/raw/_summary.md (row counts, planted counts, demo pair)
-            ──► src.foundation ──► data/derived/ (*_clean, customer_xref, fx_daily_rate, customer_activity)
-                                   + _s1_expected.md (numbers the Foundry build must match)
-            ──► src.features ──► data/derived/ (customer_links, alert_features) + _s2_expected.md
-            ──► src.agent    ──► data/exports/agent_results_<backend>.csv + agent_test_report.md
+The work happens in three phases. You build and check everything locally,
+rebuild it in Foundry, and then bring the agent's results back to score them.
 
-Foundry: features → risk tier → AIP Logic agent → analyst Actions
-            ──► export data/exports/agent_results.csv
-            ──► src.evaluate ──► data/exports/eval_report.md
 ```
+  LOCAL                          FOUNDRY                         LOCAL
+  ─────                          ───────                         ─────
+
+  config.yaml                    upload/*.csv
+      │                              │
+      ▼                              ▼
+  1. generate ──── upload ────►  features + risk tier
+      │                              │
+      ▼                              ▼
+  2. validate                    AIP Logic agent
+      │                              │
+      ▼                              ▼
+  3. foundation (S1)             analyst Actions
+      │                              │
+      ▼                              ▼
+  4. features (S2)               export agent_results.csv ──►  6. evaluate
+      │                                                            │
+      ▼                                                            ▼
+  5. agent (S3)                                                eval_report.md
+```
+
+### Local steps
+
+Run them all with `make all`. Each step reads the previous step's output.
+
+| # | Command | What it does | Writes |
+|---|---|---|---|
+| 1 | `python -m src.generate` | Builds the synthetic bank data from `config.yaml` | `data/raw/` (see below) |
+| 2 | `python -m src.validate` | Checks the data. Every line must print **PASS** | `data/raw/_summary.md`: row counts, planted cases, demo pair |
+| 3 | `python -m src.foundation` | **S1:** cleans the data and links duplicate profiles | `data/derived/`: `*_clean`, `customer_xref`, `fx_daily_rate`, `customer_activity` |
+| 4 | `python -m src.features` | **S2:** computes risk features and tiers | `data/derived/`: `customer_links`, `alert_features` |
+| 5 | `python -m src.agent` | **S3:** tests the agent prompt | `data/exports/agent_results_<backend>.csv`, `agent_test_report.md` |
+
+Steps 3 and 4 also write `_s1_expected.md` and `_s2_expected.md`. These are the
+numbers your Foundry build should match.
+
+### What `generate` writes
+
+| Folder | Contents | Where it goes |
+|---|---|---|
+| `data/raw/*.csv` | Full data, **with** the hidden answers | Stays local |
+| `data/raw/upload/*.csv` | Same data, answers removed | Upload to Foundry `raw/` |
+| `data/raw/eval/ground_truth.csv` | Only the answers | Foundry eval dataset (scoring only) |
+
+### Foundry and back
+
+1. Upload `data/raw/upload/` and build the features, risk tiers, AIP Logic
+   agent and analyst Actions. The sprint guides below walk through each step.
+2. Export the agent's drafts to `data/exports/agent_results.csv`.
+3. Run `python -m src.evaluate`. It compares the drafts with the hidden answers
+   and writes `data/exports/eval_report.md`.
 
 CI (`.github/workflows/ci.yml`) runs formatting, tests, generation,
 validation (including the same-seed hash check), the S1 and S2 reference
