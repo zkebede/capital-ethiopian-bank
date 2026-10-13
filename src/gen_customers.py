@@ -103,5 +103,6 @@ def generate(cfg: dict[str, Any]) -> pd.DataFrame:
             "onboard_date": onboard.strftime("%Y-%m-%d"),
             "diaspora_flag": rng.random(n) < float(cfg["diaspora_share"]),
             "ground_truth": NONE,
+            "scenario": NONE,  # hidden: legitimate look-alike label, set in typologies
         }
     )

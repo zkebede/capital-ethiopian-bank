@@ -118,6 +118,23 @@ typology_params:
     txns_per_ring: [60, 150]
     amount_etb: [20000, 150000]
 
+# Legitimate behaviour that looks like a typology (ground_truth = none). These
+# reach the agent as Medium, so its evaluation measures real judgement.
+lookalikes:
+  community_collection:            # funeral / wedding collection: many senders, once
+    customers: 40
+    senders: [15, 35]
+    amount_usd: [40, 200]
+  steady_trader:                   # business owner paid near the threshold all year
+    customers: 30
+    occupation: business_owner
+    payouts_per_month: [4, 6]
+    near_share: 0.6                # the rest are at or above the threshold (reported)
+    above_usd: [10000, 14000]
+  family_shared_phone:             # relatives on one phone, no money cycling
+    groups: 25
+    size: [3, 4]
+
 alerts:
   statuses: {open: 0.7, in_review: 0.3}
   legacy_score_legit: [62, 12]     # mean, sd — deliberately overlapping
@@ -151,3 +168,13 @@ features:
   tiers:                           # lower bound of each tier
     Medium: 30
     High: 60
+
+# ---------------------------------------------------------------------------
+# S3 local agent harness (python -m src.agent). Foundry's AIP Logic picks its
+# own model; this only drives local prompt testing.
+# ---------------------------------------------------------------------------
+agent:
+  model: claude-opus-5-5
+  effort: medium                   # low | medium | high | xhigh | max
+  price_per_mtok: {input: 4.00, output: 20.00}   # for the cost line in the report
+  always_include: []               # alert ids to add to every sample (e.g. the demo pair)

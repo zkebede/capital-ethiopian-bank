@@ -1,11 +1,11 @@
-# Local pipeline: make all  →  generate, validate, S1 foundation, S2 features, test.
+# Local pipeline: make all  →  generate, validate, S1 foundation, S2 features, S3 baseline agent, test.
 # After exporting agent results from Foundry to data/exports/agent_results.csv: make evaluate
 
 PY ?= .venv/bin/python
 
-.PHONY: all setup generate validate foundation features test evaluate format lint clean
+.PHONY: all setup generate validate foundation features agent agent-claude test evaluate format lint clean
 
-all: generate validate foundation features test
+all: generate validate foundation features agent test
 
 setup:
 	python3.11 -m venv .venv
@@ -23,6 +23,14 @@ foundation:
 
 features:
 	$(PY) -m src.features
+
+agent:
+	$(PY) -m src.agent --backend baseline
+
+# Paid: calls the Claude API (needs credentials). SAMPLE=50 by default.
+SAMPLE ?= 50
+agent-claude:
+	$(PY) -m src.agent --backend claude --sample $(SAMPLE)
 
 test:
 	$(PY) -m pytest

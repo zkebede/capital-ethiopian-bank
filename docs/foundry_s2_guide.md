@@ -33,7 +33,7 @@ Input: `customers_clean`, `customer_xref`.
 4. **Join** `customer_xref` twice to get each side's `resolved_entity_id`.
    Add `same_entity = entity_a == entity_b`.
 
-**Check:** 340 pairs: 120 same-entity (duplicate profiles), 220 risk links.
+**Check:** 457 pairs: 120 same-entity (duplicate profiles), 337 risk links (mule rings and relatives sharing a phone).
 
 ## 2. `inflow_cashout`
 
@@ -102,9 +102,9 @@ Inputs: `alerts_clean`, `customer_xref`, `customer_activity`, `inflow_cashout`,
 
    `risk_score` = sum; `risk_tier` = High if ≥ 60, Medium if ≥ 30, else Low.
 
-**Check against `_s2_expected.md`:** 6,000 rows; tiers Low 5,396 · Medium 602 ·
-High 2; per-feature flag counts match. Join `eval/ground_truth` **only on an
-evaluation page**, never in this pipeline, to confirm 99.3% of planted alerts
+**Check against `_s2_expected.md`:** 6,000 rows; tiers Low 5,184 · Medium 816 ·
+High 0; per-feature flag counts match. Join `eval/ground_truth` **only on an
+evaluation page**, never in this pipeline, to confirm 99.7% of planted alerts
 are Medium/High.
 
 ## 5. Ontology
@@ -154,7 +154,7 @@ S4's evaluation uses both.
 
 ## Done when
 
-- [ ] `customer_links`: 340 pairs (120 same-entity)
+- [ ] `customer_links`: 457 pairs (120 same-entity)
 - [ ] `rate_move_days`: 12 days
 - [ ] `alert_features`: tier counts and per-feature flag counts match `_s2_expected.md`
 - [ ] Ontology: 6 object types, 6 links, 4 Actions, each Action requires a reason

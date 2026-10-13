@@ -252,6 +252,167 @@ def plant_duplicate_profiles(
 
 
 # ---------------------------------------------------------------------------
+# Legitimate look-alikes (ground_truth = none)
+#
+# Ordinary behaviour that trips the same features as a typology. They give the
+# agent genuine borderline calls; the distinguishing facts are behavioural
+# (one-off vs recurring, reported vs avoided, money cycling or not).
+# ---------------------------------------------------------------------------
+
+EVENT_COLS = ["customer_id", "timestamp", "scenario"]
+
+
+def _events(remits: pd.DataFrame, scenario: str) -> pd.DataFrame:
+    return pd.DataFrame(
+        {"customer_id": remits["receiver_id"], "timestamp": remits["payout_date"], "scenario": scenario}
+    )
+
+
+def plant_community_collection(
+    cfg: dict[str, Any], rng: np.random.Generator, customer_ids: np.ndarray
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """A one-off collection (funeral, wedding): many small gifts from different senders in one month.
+
+    Looks like ``collector`` on fan-in, but happens once, with small amounts.
+    Returns ``(remittances, events)``.
+    """
+    p = cfg["lookalikes"]["community_collection"]
+    months = month_starts(cfg)
+    frames = []
+    for cid in customer_ids:
+        m = int(rng.integers(len(months)))
+        n = int(uniform_int(rng, p["senders"]))
+        start = int(rng.integers(0, 20))  # gifts arrive over about a week
+        days = start + rng.integers(0, 8, size=n)
+        frames.append(
+            pd.DataFrame(
+                {
+                    "receiver_id": cid,
+                    "sender_name": distinct_ethiopian_names(rng, n),
+                    "sender_country": sender_countries(cfg, rng, n),
+                    "mto": rng.choice(cfg["mtos"], size=n),
+                    "amount_usd": np.round(rng.uniform(*p["amount_usd"], size=n) / 5) * 5,
+                    "payout_date": months[m]
+                    + pd.to_timedelta(days, unit="D")
+                    + pd.to_timedelta(rng.integers(8 * 3600, 20 * 3600, size=n), unit="s"),
+                    "ground_truth": "none",
+                }
+            )
+        )
+    remits = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=REMIT_COLS)
+    return remits, _events(remits, "community_collection")
+
+
+def plant_steady_trader(
+    cfg: dict[str, Any], rng: np.random.Generator, customer_ids: np.ndarray
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """A business owner paid by the same partners every month, often just under the threshold.
+
+    Looks like ``structuring`` on near-threshold counts, but runs all year and many
+    payouts are at or above the threshold (so reported). Returns ``(remittances, events)``.
+    """
+    p = cfg["lookalikes"]["steady_trader"]
+    thr = float(cfg["reporting_threshold_usd"])
+    band = cfg["typology_params"]["structuring"]["band"]
+    months = month_starts(cfg)
+    rows = []
+    for cid in customer_ids:
+        partners = ethiopian_names(rng, int(rng.integers(1, 3)))
+        countries = sender_countries(cfg, rng, len(partners))
+        for month in months:
+            k = int(uniform_int(rng, p["payouts_per_month"]))
+            for day in np.sort(rng.choice(28, size=k, replace=False)):
+                near = rng.random() < float(p["near_share"])
+                amt = thr * rng.uniform(*band) if near else rng.uniform(*p["above_usd"])
+                s = int(rng.integers(len(partners)))
+                rows.append(
+                    (
+                        cid,
+                        partners[s],
+                        countries[s],
+                        rng.choice(cfg["mtos"]),
+                        float(np.floor(amt / 10) * 10),
+                        _random_time_in_day(rng, month + pd.Timedelta(days=int(day))),
+                        "none",
+                    )
+                )
+    remits = pd.DataFrame(rows, columns=REMIT_COLS)
+    return remits, _events(remits, "steady_trader")
+
+
+def plant_family_shared_phone(
+    cfg: dict[str, Any], rng: np.random.Generator, customers: pd.DataFrame, groups: list[np.ndarray]
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Relatives registered on one phone. No money moves between them.
+
+    Looks like ``mule_ring`` on shared identifiers, without the cycling.
+    Returns ``(customers, events)``; each member gets one alert anchor.
+    """
+    win = window(cfg)
+    customers = customers.copy()
+    pos = customers.set_index("customer_id").index
+    phone = customers.columns.get_loc("phone")
+    frames = []
+    for members in groups:
+        rows = pos.get_indexer(members)
+        customers.iloc[rows, phone] = customers.iloc[rows[0], phone]
+        ts = win.start + pd.to_timedelta(rng.uniform(30, win.days - 1, size=len(members)), unit="D")
+        frames.append(
+            pd.DataFrame({"customer_id": members, "timestamp": ts.round("s"), "scenario": "family_shared_phone"})
+        )
+    events = pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=EVENT_COLS)
+    return customers, events
+
+
+def plant_lookalikes(
+    cfg: dict[str, Any], customers: pd.DataFrame, taken: set[str]
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Pick customers not used by any typology and plant every look-alike.
+
+    Uses its own RNG stream so the typologies above keep their exact draws.
+    Returns ``(customers with scenario set, remittances, events)``.
+    """
+    rng = rng_for(cfg, "lookalikes")
+    lk = cfg["lookalikes"]
+    ids = customers["customer_id"].to_numpy()
+    available = ~np.isin(ids, list(taken))
+
+    def take(n: int, mask: np.ndarray | None = None) -> np.ndarray:
+        pool = np.flatnonzero(available & (mask if mask is not None else True))
+        if n > len(pool):
+            raise ValueError(f"Not enough customers for {n} look-alikes (pool {len(pool)})")
+        picked = rng.choice(pool, size=n, replace=False)
+        available[picked] = False
+        return ids[picked]
+
+    trader_occ = customers["occupation"].eq(lk["steady_trader"]["occupation"]).to_numpy()
+    community = take(int(lk["community_collection"]["customers"]))
+    traders = take(int(lk["steady_trader"]["customers"]), trader_occ)
+    sizes = uniform_int(rng, lk["family_shared_phone"]["size"], size=int(lk["family_shared_phone"]["groups"]))
+    families = [take(int(s)) for s in sizes]
+
+    customers = customers.copy()
+    scenario = customers.columns.get_loc("scenario")
+    pos = customers.set_index("customer_id").index
+    for name, picked in (
+        ("community_collection", community),
+        ("steady_trader", traders),
+        ("family_shared_phone", np.concatenate(families) if families else np.array([], dtype=str)),
+    ):
+        customers.iloc[pos.get_indexer(picked), scenario] = name
+    customers.iloc[
+        pos.get_indexer(np.concatenate([community, traders])), customers.columns.get_loc("diaspora_flag")
+    ] = True
+
+    cc_remit, cc_events = plant_community_collection(cfg, rng, community)
+    tr_remit, tr_events = plant_steady_trader(cfg, rng, traders)
+    customers, fam_events = plant_family_shared_phone(cfg, rng, customers, families)
+    remits = pd.concat([cc_remit, tr_remit], ignore_index=True)
+    events = pd.concat([cc_events, tr_events, fam_events], ignore_index=True)
+    return customers, remits, events
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 
@@ -265,6 +426,7 @@ class Planted:
     wallet_txns: pd.DataFrame
     fx_conversions: pd.DataFrame
     ring_members: list[np.ndarray] = field(default_factory=list)
+    lookalike_events: pd.DataFrame = field(default_factory=lambda: pd.DataFrame(columns=EVENT_COLS))
 
 
 def select_planted_customers(cfg: dict[str, Any], rng: np.random.Generator, customers: pd.DataFrame) -> dict:
@@ -320,10 +482,14 @@ def plant_all(cfg: dict[str, Any], customers: pd.DataFrame, rates: pd.Series) ->
     fx = plant_fx_out_of_profile(cfg, rng, picks["fx_out_of_profile"], rates)
     customers = plant_duplicate_profiles(cfg, rng, customers, picks["duplicate_profile"])
 
+    taken = set(customers.loc[customers["ground_truth"].ne("none"), "customer_id"])
+    customers, lk_remit, lk_events = plant_lookalikes(cfg, customers, taken)
+
     return Planted(
         customers=customers,
-        remittances=pd.concat([structuring, collector, pt_remit], ignore_index=True),
+        remittances=pd.concat([structuring, collector, pt_remit, lk_remit], ignore_index=True),
         wallet_txns=pd.concat([pt_wallet, ring_wallet], ignore_index=True),
         fx_conversions=fx,
         ring_members=picks["mule_ring"],
+        lookalike_events=lk_events,
     )

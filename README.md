@@ -16,7 +16,7 @@ pre-upload validation, version-controlled specs, and agent evaluation.
 
 ```bash
 make setup      # python3.11 venv + requirements
-make all        # generate → validate → S1 foundation → S2 features → test
+make all        # generate → validate → S1 → S2 → S3 baseline agent → test
 ```
 
 Or step by step:
@@ -26,7 +26,8 @@ python -m src.generate     # data/raw/*.csv in ~3s
 python -m src.validate     # every check must print PASS; writes data/raw/_summary.md
 python -m src.foundation   # S1 reference: clean → customer_xref → customer_activity
 python -m src.features     # S2 reference: customer_links → alert_features → risk tiers
-pytest                     # unit tests (typologies, S1, S2)
+python -m src.agent        # S3 prompt harness (offline baseline; --backend claude for the real prompt)
+pytest                     # unit tests (typologies, S1, S2, S3)
 ```
 
 ## Pipeline
@@ -39,6 +40,7 @@ config.yaml ──► src.generate ──► data/raw/*.csv            (full, wi
             ──► src.foundation ──► data/derived/ (*_clean, customer_xref, fx_daily_rate, customer_activity)
                                    + _s1_expected.md (numbers the Foundry build must match)
             ──► src.features ──► data/derived/ (customer_links, alert_features) + _s2_expected.md
+            ──► src.agent    ──► data/exports/agent_results_<backend>.csv + agent_test_report.md
 
 Foundry: features → risk tier → AIP Logic agent → analyst Actions
             ──► export data/exports/agent_results.csv
@@ -46,8 +48,8 @@ Foundry: features → risk tier → AIP Logic agent → analyst Actions
 ```
 
 CI (`.github/workflows/ci.yml`) runs formatting, tests, generation,
-validation (including the same-seed hash check), and the S1 and S2 reference
-builds on every push.
+validation (including the same-seed hash check), the S1 and S2 reference
+builds, and the offline S3 baseline agent on every push. It never calls a paid API.
 
 ## Building it in Foundry
 
@@ -57,7 +59,29 @@ writes the numbers your Foundry datasets should match.
 | Sprint | Guide | Reference | Result (synthetic data) |
 |---|---|---|---|
 | S1 data foundation | [`docs/foundry_s1_guide.md`](docs/foundry_s1_guide.md) | `src.foundation` | 120/120 duplicate profiles resolved, 0 false merges |
-| S2 features + Ontology | [`docs/foundry_s2_guide.md`](docs/foundry_s2_guide.md) | `src.features` | 99.3% of planted alerts reach the agent; 99.9% of legitimate alerts stay Low |
+| S2 features + Ontology | [`docs/foundry_s2_guide.md`](docs/foundry_s2_guide.md) | `src.features` | 99.7% of planted alerts reach the agent; 96.0% of legitimate alerts stay Low |
+| S3 app + agent | [`docs/foundry_s3_guide.md`](docs/foundry_s3_guide.md) | `src.agent` | Prompt harness; rules baseline catches 100% of suspicious, clears 35% of legitimate on the 45-alert test sample |
+
+## Testing the agent prompt locally
+
+The prompt lives in `specs/agent_prompt.md`; the harness reads it from there.
+
+```bash
+python -m src.agent --backend baseline            # offline rules baseline
+python -m src.agent --backend claude --sample 50  # the real prompt (Claude API, paid)
+```
+
+The Claude backend needs credentials: `export ANTHROPIC_API_KEY=...`. A
+45-alert run on `claude-opus-5-5` costs roughly $1–2. Model and effort are
+in `config.yaml → agent`.
+
+## Legitimate look-alikes
+
+Besides the planted laundering patterns, the data contains legitimate
+behaviour that looks suspicious: one-off community collections, steady
+traders paid near the threshold, and relatives sharing a phone. They are
+labelled legitimate (hidden `scenario` column) and reach the agent as Medium,
+so the evaluation measures judgement, not just pattern matching.
 
 ## Data
 
@@ -98,6 +122,8 @@ src/clean.py           S1 cleaning + Foundry column types
 src/entity_resolution.py   S1 customer_xref
 src/customer_activity.py   S1 fx_daily_rate + customer_activity
 src/features.py        S2 customer_links, alert features, risk score + tier
+src/agent_inputs.py    S3 agent payload (the agent_context contract) + fairness keys
+src/agent.py           S3 prompt harness: baseline + Claude backends, post-checks
 docs/                  Foundry how-to guides
 specs/                 features.md · ontology.md · agent_prompt.md
 tests/                 pytest suite

@@ -53,10 +53,15 @@ class Metrics:
 
 def load_results(path: Path) -> pd.DataFrame:
     """Read and sanity-check the agent export."""
-    res = pd.read_csv(path)
+    return load_results_frame(pd.read_csv(path), source=str(path))
+
+
+def load_results_frame(res: pd.DataFrame, source: str = "results") -> pd.DataFrame:
+    """Sanity-check agent results already in memory (normalises case and blanks)."""
+    res = res.copy()
     missing = {"alert_id", "classification", "typology"} - set(res.columns)
     if missing:
-        raise ValueError(f"{path} is missing columns: {sorted(missing)}")
+        raise ValueError(f"{source} is missing columns: {sorted(missing)}")
     res["classification"] = res["classification"].str.strip().str.lower()
     res["typology"] = res["typology"].fillna(NONE).str.strip().str.lower()
     bad_cls = set(res["classification"]) - set(CLASSIFICATIONS)
@@ -166,7 +171,24 @@ def hit(ok: bool) -> str:
     return "✅ met" if ok else "❌ not met"
 
 
-def render(m: Metrics, conf: pd.DataFrame, misses: pd.DataFrame, results_path: Path) -> str:
+def lookalikes(df: pd.DataFrame) -> pd.DataFrame | None:
+    """How the agent handled legitimate look-alikes, per scenario (needs a ``scenario`` column)."""
+    if "scenario" not in df.columns:
+        return None
+    lk = df[df["scenario"].fillna(NONE).ne(NONE)]
+    if lk.empty:
+        return None
+    return lk.groupby("scenario").agg(
+        alerts=("alert_id", "size"),
+        sent=("sent", "sum"),
+        cleared=("classification", lambda s: s.eq("likely_legitimate").mean()),
+        flagged=("classification", lambda s: s.eq("likely_suspicious").mean()),
+    )
+
+
+def render(
+    m: Metrics, conf: pd.DataFrame, misses: pd.DataFrame, results_path: Path, lk: pd.DataFrame | None = None
+) -> str:
     """Render the Markdown report."""
     lines = [
         "# Agent evaluation report",
@@ -207,6 +229,20 @@ def render(m: Metrics, conf: pd.DataFrame, misses: pd.DataFrame, results_path: P
         "|---|" + "---:|" * len(conf.columns),
     ]
     lines += [f"| {idx} | " + " | ".join(str(v) for v in row) + " |" for idx, row in conf.iterrows()]
+    if lk is not None:
+        lines += [
+            "",
+            "## Legitimate look-alikes",
+            "",
+            "Legitimate behaviour that resembles a typology. All should end up likely_legitimate.",
+            "",
+            "| Scenario | Alerts | Sent to agent | Cleared | Flagged suspicious |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        lines += [
+            f"| {idx} | {int(r.alerts)} | {int(r.sent)} | {_pct(r.cleared)} | {_pct(r.flagged)} |"
+            for idx, r in zip(lk.index, lk.itertuples())
+        ]
     lines += ["", f"## {WORST_N} worst misses", ""]
     if misses.empty:
         lines.append("None.")
@@ -228,7 +264,7 @@ def evaluate(results_path: Path, alerts_path: Path) -> tuple[Metrics, str]:
     alerts = pd.read_csv(alerts_path)
     df = join(alerts, load_results(results_path))
     m = compute(df)
-    return m, render(m, confusion(df), worst_misses(df), results_path)
+    return m, render(m, confusion(df), worst_misses(df), results_path, lookalikes(df))
 
 
 def main(argv: list[str] | None = None) -> None:

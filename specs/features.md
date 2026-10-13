@@ -38,18 +38,31 @@ Expected monthly inflow by band: low 300 · medium 800 · high 2,500 USD
 
 | Ground truth | Low | Medium | High | Sent to agent |
 |---|---:|---:|---:|---:|
-| none | 5,392 | 8 | 0 | 0.1% |
-| structuring | 0 | 121 | 0 | 100% |
-| collector | 0 | 54 | 0 | 100% |
-| pass_through | 4 | 167 | 0 | 98% |
-| mule_ring | 0 | 166 | 1 | 100% |
-| fx_out_of_profile | 0 | 86 | 1 | 100% |
+| none (ordinary + look-alikes) | 5,182 | 218 | 0 | 4% |
+| structuring | 0 | 149 | 0 | 100% |
+| collector | 0 | 48 | 0 | 100% |
+| pass_through | 2 | 166 | 0 | 99% |
+| mule_ring | 0 | 146 | 0 | 100% |
+| fx_out_of_profile | 0 | 89 | 0 | 100% |
 
-**99.3%** of planted alerts reach the agent (ceiling on recall; target ≥ 90%).
-**99.9%** of legitimate alerts stay Low. Regenerate with `python -m src.features`
+**99.7%** of planted alerts reach the agent (ceiling on recall; target ≥ 90%).
+**96.0%** of legitimate alerts stay Low. Most legitimate alerts that reach the
+agent are deliberate look-alikes (139 of 218), so the agent has real
+borderline calls to make. Regenerate with `python -m src.features`
 (writes `data/derived/_s2_expected.md`).
 
-## Known legitimate look-alikes (should stay Low)
+## Legitimate look-alikes
+
+Planted on purpose (`config.yaml → lookalikes`, hidden `scenario` label). These
+**should reach the agent**, and the agent should clear them using history:
+
+| Scenario | Trips | Distinguishing facts |
+|---|---|---|
+| community_collection | `sender_fanin` (+ `profile_mismatch`) | One month only; small gifts (avg < $200) |
+| steady_trader | `near_threshold_ct` + `profile_mismatch` | Every month of the year; some payouts at/above the threshold (reported) |
+| family_shared_phone | `shared_id_links` | No transfers between the linked customers |
+
+Ordinary behaviour that should stay Low:
 
 - Holiday spikes (Genna, Timket, Fasika, Eid, Enkutatash, Meskel): more and
   larger family payments in the 14 days before. Volume alone is not risk.
@@ -66,3 +79,4 @@ Expected monthly inflow by band: low 300 · medium 800 · high 2,500 USD
 | 2026-10-12 | Original spec weights (`cashout_hours_p50` ≤ 6h = 20, `shared_id_links` = 15, `fx_rate_timing` = 10) | Baseline | 38.8% | 100.0% |
 | 2026-10-12 | `shared_id_links` 15 → 30; `fx_rate_timing` 10 → 20 | Mule rings (15) and FX timing (10 + 10) could never reach Medium alone | 90.3% | 99.8% |
 | 2026-10-12 | Replace `cashout_hours_p50` (≤ 6h, 20) with `cashout_fast_share` (≥ 0.5, 30) | Ordinary family remittances in the same window pushed the median above 6h, hiding a third of pass-through cases; value-weighting is closer to the typology ("80%+ of each inflow out within 6h") | 99.3% | 99.9% |
+| 2026-10-12 | Added legitimate look-alikes (no rule change) | Give the agent borderline legitimate cases | 99.7% | 96.0% |
