@@ -281,7 +281,8 @@ def check_reproducible(raw: Path, config_path: str) -> Result:
         generate.write(generate.build(load_config(config_path)), Path(tmp))
         fresh = file_hashes(Path(tmp))
     current = file_hashes(raw)
-    diff = sorted(k for k in fresh.keys() | current.keys() if fresh.get(k) != current.get(k))
+    # Only the files the generator writes: stray copies (e.g. "alerts 4.csv" from a sync tool) are ignored.
+    diff = sorted(k for k in fresh if fresh[k] != current.get(k))
     return Result(
         "Same seed → identical file hashes", not diff, f"differs: {diff}" if diff else f"{len(fresh)} files match"
     )

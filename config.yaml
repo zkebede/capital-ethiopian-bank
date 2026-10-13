@@ -1,5 +1,5 @@
 seed: 42
-bank_name: "Tsehay Demo Bank"      # fictional — verify before recording
+bank_name: "Capital Ethiopian Bank" # fictional — checked against real Ethiopian banks 2026-10-13
 months: 12
 start_date: "2025-10-01"
 
@@ -45,7 +45,7 @@ planted:
 other_sender_countries: [DE, SE, NO, IT, IL, ZA, KE, AU, NL, KW]
 
 # Fictional money-transfer operators. Do not replace with real company names.
-mtos: ["Abay Transfer", "Lucy Remit", "Entoto Express", "Rift Money", "Blue Nile Pay"]
+mtos: ["Sheba Send", "Lucy Remit", "Entoto Express", "Rift Money", "Blue Nile Pay"]
 
 # Share of customers who receive diaspora remittances.
 diaspora_share: 0.70

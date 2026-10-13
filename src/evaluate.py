@@ -186,8 +186,23 @@ def lookalikes(df: pd.DataFrame) -> pd.DataFrame | None:
     )
 
 
+def agent_only(df: pd.DataFrame) -> Metrics | None:
+    """Metrics on the alerts the agent actually reviewed (Medium/High), or None if it reviewed none.
+
+    End-to-end numbers include every Low-tier alert, which the risk tier closes
+    before the agent sees it; this isolates the agent's own calls.
+    """
+    sent = df[df["sent"]]
+    return compute(sent) if len(sent) else None
+
+
 def render(
-    m: Metrics, conf: pd.DataFrame, misses: pd.DataFrame, results_path: Path, lk: pd.DataFrame | None = None
+    m: Metrics,
+    conf: pd.DataFrame,
+    misses: pd.DataFrame,
+    results_path: Path,
+    lk: pd.DataFrame | None = None,
+    sent: Metrics | None = None,
 ) -> str:
     """Render the Markdown report."""
     lines = [
@@ -205,6 +220,8 @@ def render(
         f"| Recall on planted cases (not marked likely_legitimate) ≥ {_pct(RECALL_TARGET)} | {_pct(m.caught_recall)} | {hit(m.caught_recall >= RECALL_TARGET)} |",
         f"| Legitimate alerts marked likely_legitimate ≥ {_pct(LEGIT_CLEARED_TARGET)} | {_pct(m.legit_cleared)} | {hit(m.legit_cleared >= LEGIT_CLEARED_TARGET)} |",
         "",
+        "These targets cover the whole system: the risk tier closes Low alerts, then the agent reviews the rest.",
+        "",
         "## `likely_suspicious` vs ground truth",
         "",
         "| Precision | Recall | F1 |",
@@ -221,6 +238,23 @@ def render(
         "",
         f"Typology accuracy on caught suspicious alerts: **{_pct(m.typology_accuracy)}**.",
         "",
+    ]
+    if sent is not None:
+        lines += [
+            "## The agent alone (Medium/High alerts only)",
+            "",
+            f"The {sent.n_alerts:,} alerts the agent actually reviewed. These are the hard cases, so the numbers"
+            " are lower than the system totals above.",
+            "",
+            "| Metric | Value |",
+            "|---|---:|",
+            f"| Suspicious alerts kept for an analyst (not likely_legitimate) | {_pct(sent.caught_recall)} |",
+            f"| Legitimate alerts cleared (likely_legitimate) | {_pct(sent.legit_cleared)} |",
+            f"| Precision / recall / F1 for likely_suspicious | {_pct(sent.precision)} / {_pct(sent.recall)} / {sent.f1:.3f} |",
+            f"| Legitimate share of what it reviewed | {_pct(sent.legacy_fp_share)} |",
+            "",
+        ]
+    lines += [
         "## Typology confusion matrix",
         "",
         "Rows = ground truth, columns = agent typology.",
@@ -264,7 +298,7 @@ def evaluate(results_path: Path, alerts_path: Path) -> tuple[Metrics, str]:
     alerts = pd.read_csv(alerts_path)
     df = join(alerts, load_results(results_path))
     m = compute(df)
-    return m, render(m, confusion(df), worst_misses(df), results_path, lookalikes(df))
+    return m, render(m, confusion(df), worst_misses(df), results_path, lookalikes(df), agent_only(df))
 
 
 def main(argv: list[str] | None = None) -> None:

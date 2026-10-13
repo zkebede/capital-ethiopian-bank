@@ -11,6 +11,7 @@ prompt is read from ``specs/agent_prompt.md`` so the spec is the only copy.
 
 Writes ``data/exports/agent_results_<backend>.csv`` (same columns as the Foundry
 export, so ``src.evaluate`` can score it) and ``data/exports/agent_test_report.md``.
+With ``--all`` both names get an ``_all`` suffix so the test sample is kept.
 Ground truth is read from data/raw/alerts.csv for scoring only; it never reaches
 the agent.
 """
@@ -359,7 +360,8 @@ def main(argv: list[str] | None = None) -> None:
     results = run(agent, sample)
 
     EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-    out = EXPORTS_DIR / f"agent_results_{agent.name}.csv"
+    suffix = "_all" if args.all else ""  # a full run never overwrites the test sample
+    out = EXPORTS_DIR / f"agent_results_{agent.name}{suffix}.csv"
     results.to_csv(out, index=False)
     m, by_label = score_sample(results, alerts, sample)
 
@@ -369,7 +371,7 @@ def main(argv: list[str] | None = None) -> None:
         usd = agent.usage["input_tokens"] / 1e6 * price["input"] + agent.usage["output_tokens"] / 1e6 * price["output"]
         cost = f"{agent.usage['input_tokens']:,} in / {agent.usage['output_tokens']:,} out tokens ≈ ${usd:.2f}"
     report = report_md(agent, args, m, by_label, results, cost)
-    (EXPORTS_DIR / "agent_test_report.md").write_text(report, encoding="utf-8")
+    (EXPORTS_DIR / f"agent_test_report{suffix}.md").write_text(report, encoding="utf-8")
     print("\n" + report)
     print(f"Results: {out}")
 
