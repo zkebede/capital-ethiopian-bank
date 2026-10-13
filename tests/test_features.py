@@ -126,7 +126,7 @@ def test_cashout_after_alert_is_not_counted(cfg: dict) -> None:
             "amount_usd": [1000.0, 900.0],
             "amount_etb": [155000.0, 139500.0],
             "counterparty": ["Sender A", "EXT-1"],
-            "detail": ["Abay Transfer", "p2p"],
+            "detail": ["Sheba Send", "p2p"],
         }
     )
     daily = pd.DataFrame({"day": [t0.normalize()], "etb_per_usd": [155.0]})

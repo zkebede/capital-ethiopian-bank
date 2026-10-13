@@ -40,6 +40,14 @@ jobs:
       - name: S3 agent harness (offline baseline, no API calls)
         run: python -m src.agent --backend baseline
 
+      - name: S4 re-point to US outbound
+        run: python -m src.repoint
+
+      - name: S4 end-to-end evaluation (baseline on every Medium/High alert)
+        run: |
+          python -m src.agent --backend baseline --all
+          python -m src.evaluate --results data/exports/agent_results_baseline_all.csv --out data/exports/eval_report_baseline.md
+
       - name: Upload data summaries
         if: always()
         uses: actions/upload-artifact@v4
@@ -50,4 +58,6 @@ jobs:
             data/derived/_s1_expected.md
             data/derived/_s2_expected.md
             data/exports/agent_test_report.md
+            data/derived/_s4_expected.md
+            data/exports/eval_report_baseline.md
           if-no-files-found: ignore
